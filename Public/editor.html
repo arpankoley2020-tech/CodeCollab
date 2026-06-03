@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeCollab - Interactive Editor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css">
+    <style>
+        body { margin: 0; background: #1e1e1e; color: white; font-family: monospace; display: flex; flex-direction: column; height: 100vh; }
+        nav { background: #2d2d2d; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+        nav a, nav button { color: #4CAF50; margin: 0 10px; background: none; border: none; cursor: pointer; font-size: 14px; }
+        .main-container { display: flex; flex: 1; overflow: hidden; padding: 10px; gap: 10px; }
+        .editor-container { flex: 2; display: flex; flex-direction: column; }
+        #editor-container { flex: 1; border: 1px solid #333; border-radius: 6px; overflow: hidden; }
+        .right-panel { flex: 1.5; display: flex; flex-direction: column; gap: 10px; }
+        .terminal-container { background: #0a0a0a; border-radius: 6px; display: flex; flex-direction: column; height: 60%; }
+        .terminal-header { background: #2d2d2d; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; border-radius: 6px 6px 0 0; }
+        .terminal-header select, .terminal-header button { background: #4CAF50; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; color: white; margin-left: 8px; }
+        #terminal { background: #0a0a0a; color: #0f0; flex: 1; overflow-y: auto; padding: 8px; font-family: monospace; white-space: pre-wrap; font-size: 13px; }
+        .input-line { display: flex; align-items: center; padding: 6px; border-top: 1px solid #333; background: #1a1a1a; }
+        .input-line span { color: #0f0; margin-right: 6px; }
+        #terminalInput { flex: 1; background: #0a0a0a; color: white; border: none; padding: 6px; font-family: monospace; outline: none; }
+        .chat-container { background: #2d2d2d; border-radius: 6px; display: flex; flex-direction: column; height: 38%; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 6px; font-size: 12px; background: #1e1e1e; border-radius: 6px; }
+        .chat-input { display: flex; padding: 6px; border-top: 1px solid #444; }
+        .chat-input input { flex: 1; background: #0a0a0a; color: white; border: none; padding: 6px; border-radius: 4px; }
+        .chat-input button { background: #4CAF50; border: none; margin-left: 6px; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+<nav>
+    <span style="color:#4CAF50; font-weight:bold;">☁️ CodeCollab</span>
+    <div>
+        <a href="/dashboard.html">Dashboard</a>
+        <button onclick="logout()">Logout</button>
+    </div>
+</nav>
+<div class="main-container">
+    <div class="editor-container">
+        <div id="editor-container" style="height: 100%;"></div>
+    </div>
+    <div class="right-panel">
+        <div class="terminal-container">
+            <div class="terminal-header">
+                <span>📟 Terminal (Interactive)</span>
+                <div>
+                    <select id="interactiveLang">
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="cpp">C++</option>
+                        <option value="c">C</option>
+                        <option value="java">Java</option>
+                    </select>
+                    <button id="runInteractiveBtn">▶ Run</button>
+                    <button id="killBtn" style="background:#d32f2f;">⏹ Stop</button>
+                </div>
+            </div>
+            <div id="terminal"></div>
+            <div class="input-line">
+                <span>$</span>
+                <input type="text" id="terminalInput" placeholder="Type input and press Enter..." autocomplete="off">
+            </div>
+        </div>
+        <div class="chat-container">
+            <div style="padding: 6px; background:#2d2d2d; border-radius:6px 6px 0 0;">💬 Chat</div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input">
+                <input type="text" id="chatInput" placeholder="Type a message...">
+                <button id="sendChatBtn">Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const fileId = urlParams.get('fileId');
+    if (!fileId) window.location.href = '/dashboard.html';
+
+    const socket = io();
+    let currentUsername = localStorage.getItem('chatUsername') || 'User' + Math.floor(Math.random() * 1000);
+    localStorage.setItem('chatUsername', currentUsername);
+
+    const terminalDiv = document.getElementById('terminal');
+    const terminalInput = document.getElementById('terminalInput');
+    const runBtn = document.getElementById('runInteractiveBtn');
+    const killBtn = document.getElementById('killBtn');
+    const langSelect = document.getElementById('interactiveLang');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    let editor = null;
+
+    function appendTerminal(text, type = 'stdout') {
+        const span = document.createElement('div');
+        span.style.color = type === 'stderr' ? '#f66' : '#0f0';
+        span.style.whiteSpace = 'pre-wrap';
+        span.textContent = text;
+        terminalDiv.appendChild(span);
+        terminalDiv.scrollTop = terminalDiv.scrollHeight;
+    }
+
+    socket.on('interactiveOutput', (data) => {
+        if (data.type === 'stdout' || data.type === 'stderr') {
+            appendTerminal(data.data, data.type);
+        } else if (data.type === 'exit') {
+            appendTerminal(`\n[${data.data}]`, 'stderr');
+        }
+    });
+
+    runBtn.addEventListener('click', () => {
+        const code = editor.getValue();
+        const language = langSelect.value;
+        if (!code) {
+            appendTerminal('Error: No code to run', 'stderr');
+            return;
+        }
+        terminalDiv.innerHTML = '';
+        appendTerminal(`▶ Running ${language} code...\n`);
+        socket.emit('interactiveRun', { code, language, fileId });
+    });
+
+    terminalInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const input = terminalInput.value;
+            if (input) {
+                socket.emit('interactiveInput', input);
+                appendTerminal(input + '\n');
+                terminalInput.value = '';
+            }
+        }
+    });
+
+    killBtn.addEventListener('click', () => {
+        socket.emit('interactiveKill');
+        appendTerminal('\n[Process killed by user]\n', 'stderr');
+    });
+
+    // Chat
+    socket.emit('getChatHistory', fileId);
+    socket.on('chatHistory', (history) => {
+        chatMessages.innerHTML = '';
+        history.forEach(msg => addChatMessage(msg.username, msg.message, msg.timestamp));
+    });
+    socket.on('receiveMessage', (data) => addChatMessage(data.username, data.message, data.timestamp));
+
+    function addChatMessage(username, message, timestamp) {
+        const div = document.createElement('div');
+        const time = new Date(timestamp).toLocaleTimeString();
+        div.innerHTML = `<strong style="color:#4CAF50">${escapeHtml(username)}</strong> ${time}<br>${escapeHtml(message)}`;
+        chatMessages.appendChild(div);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    sendChatBtn.addEventListener('click', () => {
+        const msg = chatInput.value.trim();
+        if (msg) {
+            socket.emit('sendMessage', { fileId, message: msg, username: currentUsername });
+            chatInput.value = '';
+        }
+    });
+    chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatBtn.click(); });
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m]));
+    }
+
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+        editor = monaco.editor.create(document.getElementById('editor-container'), {
+            value: `#include <iostream>\nusing namespace std;\nint main() {\n    int n;\n    cout << "Enter a number: ";\n    cin >> n;\n    if (n % 2 == 0) cout << "Even\\n";\n    else cout << "Odd\\n";\n    return 0;\n}`,
+            language: 'cpp',
+            theme: 'vs-dark',
+            automaticLayout: true
+        });
+        socket.emit('joinFile', fileId);
+        socket.on('loadContent', (content) => { if (content) editor.setValue(content); });
+        socket.on('codeUpdate', (content) => editor.setValue(content));
+        editor.onDidChangeModelContent(() => {
+            socket.emit('codeChange', { fileId, content: editor.getValue() });
+        });
+    });
+
+    async function logout() {
+        if (confirm('Logout?')) {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        }
+    }
+</script>
+</body>
+</html>

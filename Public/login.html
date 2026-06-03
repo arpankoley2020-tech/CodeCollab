@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeCollab - Login</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .card {
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 12px;
+            width: 350px;
+            margin: 100px auto;
+            text-align: center;
+        }
+        input {
+            width: 90%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: none;
+        }
+        button {
+            background: #4CAF50;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            color: white;
+        }
+        .register-fields {
+            display: none;
+            margin-top: 15px;
+            border-top: 1px solid #444;
+            padding-top: 15px;
+        }
+        h2 { color: #4CAF50; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>☁️ CodeCollab</h2>
+    <div id="loginDiv">
+        <input type="tel" id="loginPhone" placeholder="Phone Number" required>
+        <input type="text" id="loginOtp" placeholder="Enter OTP">
+        <button onclick="sendOTP()">Send OTP</button>
+        <button onclick="verifyOTP()">Login / Register</button>
+        <hr>
+        <button onclick="showRegister()">Create New Account</button>
+    </div>
+    <div id="registerDiv" class="register-fields">
+        <input type="text" id="regName" placeholder="Full Name">
+        <input type="tel" id="regPhone" placeholder="Phone Number">
+        <input type="text" id="regOtp" placeholder="Enter OTP">
+        <button onclick="sendRegOTP()">Send OTP</button>
+        <button onclick="verifyRegOTP()">Verify & Register</button>
+        <button onclick="showLogin()">Back to Login</button>
+    </div>
+</div>
+<script>
+    let currentPhone = '';
+
+    function showRegister() {
+        document.getElementById('loginDiv').style.display = 'none';
+        document.getElementById('registerDiv').style.display = 'block';
+        currentPhone = '';
+    }
+    function showLogin() {
+        document.getElementById('loginDiv').style.display = 'block';
+        document.getElementById('registerDiv').style.display = 'none';
+        currentPhone = '';
+    }
+
+    async function sendOTP() {
+        const phone = document.getElementById('loginPhone').value;
+        if (!phone) return alert('Enter phone number');
+        currentPhone = phone;
+        const res = await fetch('/api/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+        const data = await res.json();
+        alert(data.success ? 'OTP sent (check terminal)' : 'Error sending OTP');
+    }
+
+    async function verifyOTP() {
+        const phone = currentPhone || document.getElementById('loginPhone').value;
+        const otp = document.getElementById('loginOtp').value;
+        if (!otp) return alert('Enter OTP');
+        const res = await fetch('/api/verify-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, otp })
+        });
+        if (res.ok) window.location.href = '/dashboard.html';
+        else alert('Invalid OTP');
+    }
+
+    async function sendRegOTP() {
+        const phone = document.getElementById('regPhone').value;
+        if (!phone) return alert('Enter phone number');
+        currentPhone = phone;
+        const res = await fetch('/api/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+        const data = await res.json();
+        alert(data.success ? 'OTP sent (check terminal)' : 'Error sending OTP');
+    }
+
+    async function verifyRegOTP() {
+        const name = document.getElementById('regName').value;
+        const phone = currentPhone || document.getElementById('regPhone').value;
+        const otp = document.getElementById('regOtp').value;
+        if (!name || !phone || !otp) return alert('All fields required');
+        const res = await fetch('/api/verify-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, otp, name })
+        });
+        if (res.ok) {
+            alert('Registration successful! Please login.');
+            showLogin();
+            document.getElementById('loginPhone').value = phone;
+        } else alert('Invalid OTP');
+    }
+</script>
+</body>
+</html>

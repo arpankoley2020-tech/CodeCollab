@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeCollab - Dashboard</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .dashboard-container { max-width: 800px; margin: auto; }
+        .file-list { list-style: none; padding: 0; }
+        .file-list li { background: #1e1e1e; margin: 10px 0; padding: 12px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .file-list a { color: #4CAF50; text-decoration: none; font-size: 18px; flex: 1; }
+        .file-list button { background: #d32f2f; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; }
+        .share-btn { background: #2196F3; margin-left: 8px; }
+        input, button { padding: 8px; margin: 5px; border-radius: 5px; border: none; }
+        .btn { background: #4CAF50; cursor: pointer; color: white; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+        .modal-content { background: #1e1e1e; padding: 20px; border-radius: 10px; width: 90%; max-width: 500px; text-align: center; }
+        .close { float: right; font-size: 28px; font-weight: bold; cursor: pointer; color: #aaa; }
+        .plan-container { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 20px; }
+        .plan { background: #2d2d2d; padding: 20px; border-radius: 10px; width: 200px; }
+        .plan button { background: #4CAF50; width: 100%; margin-top: 10px; }
+        #projectTitle { cursor: pointer; }
+    </style>
+</head>
+<body>
+<nav>
+    <h2 id="projectTitle">☁️ CodeCollab</h2>
+    <div>
+        <button onclick="showPaymentModal()">💳 Payment</button>
+        <button onclick="logout()">🚪 Logout</button>
+    </div>
+</nav>
+<div class="dashboard-container">
+    <h1>📁 My Projects</h1>
+    <div>
+        <input type="text" id="newFileName" placeholder="File name">
+        <button class="btn" onclick="createFile()">➕ New File</button>
+    </div>
+    <ul class="file-list" id="fileList"></ul>
+</div>
+
+<!-- Payment Modal -->
+<div id="paymentModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closePaymentModal()">&times;</span>
+        <h2>💰 Choose Your Plan</h2>
+        <div class="plan-container">
+            <div class="plan"><h3>Basic</h3><div class="price">Free</div><button onclick="makePayment('basic',0)">Start Free</button></div>
+            <div class="plan pro"><h3>Pro</h3><div class="price">₹499 / month</div><button onclick="makePayment('pro',499)">Buy Now</button></div>
+            <div class="plan"><h3>Team</h3><div class="price">₹999 / month</div><button onclick="makePayment('team',999)">Get Team</button></div>
+        </div>
+        <div id="paymentMessage" style="margin-top:15px;"></div>
+    </div>
+</div>
+
+<script>
+    async function loadFiles() {
+        const res = await fetch('/api/files');
+        const files = await res.json();
+        const list = document.getElementById('fileList');
+        list.innerHTML = files.map(f => `
+            <li>
+                <a href="/editor.html?fileId=${f.fileId}">📄 ${f.name}</a>
+                <div>
+                    <button class="share-btn" onclick="shareFile('${f.fileId}')">Share</button>
+                    <button onclick="deleteFile('${f.fileId}')">Delete</button>
+                </div>
+            </li>
+        `).join('');
+    }
+
+    async function createFile() {
+        const name = document.getElementById('newFileName').value.trim();
+        if (!name) return alert('Enter file name');
+        await fetch('/api/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, content: '' })
+        });
+        document.getElementById('newFileName').value = '';
+        loadFiles();
+    }
+
+    async function deleteFile(fileId) {
+        if (!confirm('Delete this file permanently?')) return;
+        const res = await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
+        if (res.ok) loadFiles();
+        else alert('Delete failed');
+    }
+
+    async function shareFile(fileId) {
+        const phone = prompt('Enter phone number of the person you want to invite:');
+        if (!phone) return;
+        const res = await fetch(`/api/files/${fileId}/invite`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+        if (res.ok) alert('Invitation sent. They will see this file after login.');
+        else alert('Error: user not found or you are not the owner');
+    }
+
+    async function logout() {
+        if (confirm('Are you sure you want to logout?')) {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        }
+    }
+
+    function showPaymentModal() {
+        document.getElementById('paymentModal').style.display = 'flex';
+    }
+    function closePaymentModal() {
+        document.getElementById('paymentModal').style.display = 'none';
+        document.getElementById('paymentMessage').innerHTML = '';
+    }
+    async function makePayment(plan, amount) {
+        const res = await fetch('/api/payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan, amount })
+        });
+        const data = await res.json();
+        const msgDiv = document.getElementById('paymentMessage');
+        msgDiv.innerHTML = `<div style="background:#2e7d32; padding:10px; border-radius:5px;">✅ ${data.message}</div>`;
+        setTimeout(() => msgDiv.innerHTML = '', 3000);
+    }
+
+    function showFinalYearPopup() {
+        const popup = document.createElement('div');
+        popup.style.position = 'fixed'; popup.style.bottom = '30px'; popup.style.left = '50%';
+        popup.style.transform = 'translateX(-50%)'; popup.style.background = 'linear-gradient(135deg, #ff9800, #f44336)';
+        popup.style.color = 'white'; popup.style.padding = '12px 24px'; popup.style.borderRadius = '40px';
+        popup.style.fontSize = '18px'; popup.style.fontWeight = 'bold'; popup.style.zIndex = '1000';
+        popup.innerHTML = '🎓 FINAL YEAR PROJECT 🎉';
+        document.body.appendChild(popup);
+        setTimeout(() => popup.remove(), 3000);
+    }
+    document.getElementById('projectTitle').addEventListener('click', showFinalYearPopup);
+
+    loadFiles();
+</script>
+</body>
+</html>
