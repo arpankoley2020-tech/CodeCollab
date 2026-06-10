@@ -18,11 +18,6 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(cookieParser());
 
-// ---------- Helper: Generate OTP ----------
-function generateOTP() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
 // ---------- MongoDB Models ----------
 const UserSchema = new mongoose.Schema({
     name: String,
@@ -70,11 +65,11 @@ app.get('/', (req, res) => {
     }
 });
 
-// ---------- Auth Routes (OTP) ----------
+// ---------- Auth Routes (OTP fixed to 123456) ----------
 app.post('/api/send-otp', async (req, res) => {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone required' });
-    const otp = generateOTP();
+    const otp = '123456';   // Fixed OTP for demo
     const expiry = new Date(Date.now() + 5 * 60 * 1000);
     await User.findOneAndUpdate(
         { phone },
@@ -82,7 +77,7 @@ app.post('/api/send-otp', async (req, res) => {
         { upsert: true, new: true }
     );
     console.log(`OTP for ${phone}: ${otp}`);
-    res.json({ success: true, message: 'OTP sent (check console)' });
+    res.json({ success: true, message: 'OTP sent (use 123456)' });
 });
 
 app.post('/api/verify-otp', async (req, res) => {
